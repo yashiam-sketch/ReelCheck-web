@@ -1,7 +1,7 @@
 // OMDb client: IMDb rating and votes, Rotten Tomatoes Tomatometer and Metascore for a title.
 // Free key: https://www.omdbapi.com/apikey.aspx (1,000 requests a day).
 
-import { similarity } from "./matching.js";
+import { isSameTitle, normalize, similarity } from "./matching.js";
 
 const BASE_URL = "https://www.omdbapi.com/";
 const MIN_SIMILARITY = 0.6;
@@ -201,11 +201,25 @@ export class OmdbClient {
       const json = await this.request({ t: query, y: withYear ? year : undefined, type: type ?? undefined, plot: "short" }, signal);
       if (!json) return null;
       const movie = parseDetails(json);
-      return similarity(query, movie.title) >= MIN_SIMILARITY ? movie : null;
+      return isSameTitle(query, movie.title, MIN_SIMILARITY) ? movie : null;
     };
 
     let movie = await exact(Boolean(year));
     if (!movie && year) movie = await exact(false);
+    // OMDb's y= is exact, so a year that's one off falls through to the yearless t=, which can
+    // return another film of the same name (a remake or the original). Prefer the same title
+    // from the search whose year fits.
+    if (movie && year && !yearFits(movie.year, year)) {
+      const pool = (await searchAnyYear) ?? [];
+      const better = rank(pool).find((hit) => hit.imdbID !== movie.imdbID && yearFits(hit.year, year) && normalize(hit.title) === normalize(movie.title));
+      if (better) {
+        const corrected = await this.details(better.imdbID, signal).catch((error) => {
+          if (signal?.aborted) throw error;
+          return null; // keep the match we have
+        });
+        movie = corrected ?? movie;
+      }
+    }
 
     let hits = await searchAnyYear;
     if (!movie) {
@@ -215,7 +229,7 @@ export class OmdbClient {
         const ids = new Set(sameYear.map((h) => h.imdbID));
         hits = [...sameYear, ...hits.filter((h) => !ids.has(h.imdbID))];
       }
-      const best = rank(hits).find((hit) => similarity(query, hit.title) >= MIN_SIMILARITY);
+      const best = rank(hits).find((hit) => isSameTitle(query, hit.title, MIN_SIMILARITY));
       if (!best) return null;
       movie = await this.details(best.imdbID, signal);
     }

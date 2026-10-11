@@ -95,6 +95,8 @@ const claudeMessage = (answer) => ({
   content: [{ type: "thinking", thinking: "", signature: "x" }, { type: "text", text: JSON.stringify(answer) }],
 });
 let nextClaudeAnswer = { identified: true, title: "Inception", year: 2010, media_type: "movie", confidence: "high", evidence: "The title reads INCEPTION.", alternatives: [{ title: "Interstellar", year: 2014 }] };
+let claudeDelayMs = 0; // > 0 keeps an identification running, to act while it's in flight
+const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
 
 // --- run -------------------------------------------------------------------------------------
 const { chromium } = await loadPlaywright();
@@ -111,15 +113,21 @@ const context = await browser.newContext({
 });
 const page = await context.newPage();
 const problems = [];
-// The rejected-key step makes OMDb answer 401 on purpose; Chromium logs that as a failed load.
-page.on("console", (msg) => { if (msg.type() === "error" && !msg.text().includes("status of 401")) problems.push(`console: ${msg.text()}`); });
-page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+const watch = (p) => {
+  // The rejected-key step makes OMDb answer 401 on purpose; Chromium logs that as a failed load.
+  p.on("console", (msg) => { if (msg.type() === "error" && !msg.text().includes("status of 401")) problems.push(`console: ${msg.text()}`); });
+  p.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+};
+watch(page);
 
 await context.route("https://api.anthropic.com/**", async (route) => {
   const request = route.request();
   if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
   claudeRequests.push({ headers: request.headers(), body: request.postDataJSON() });
-  await route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(claudeMessage(nextClaudeAnswer)) });
+  const answer = nextClaudeAnswer;
+  if (claudeDelayMs) await new Promise((resolve) => setTimeout(resolve, claudeDelayMs));
+  // The app may have cancelled the request meanwhile.
+  await route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(claudeMessage(answer)) }).catch(() => {});
 });
 await context.route("https://www.omdbapi.com/**", async (route) => {
   const params = Object.fromEntries(new URL(route.request().url()).searchParams);
@@ -151,7 +159,22 @@ try {
     await page.waitForSelector("#settingsSheet[open]");
     await page.waitForFunction(() => document.getElementById("preview").videoWidth > 0);
     assert.equal(await page.isVisible("#settingsIntro"), true);
+    assert.equal(await page.isVisible("#installHint"), false, "no install hint outside iPhone Safari");
     await shot("01-onboarding");
+  });
+
+  await step("a tap on a sheet's own padding keeps it open; the backdrop closes it", async () => {
+    await page.waitForTimeout(300); // let the sheet animation finish
+    await page.fill("#omdbKey", "typed");
+    const box = await page.locator("#settingsSheet").boundingBox();
+    await page.mouse.click(box.x + 8, box.y + box.height / 2); // side padding
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height - 10); // bottom padding, under Save
+    assert.equal(await page.isVisible("#settingsSheet[open]"), true);
+    assert.equal(await page.inputValue("#omdbKey"), "typed");
+    await page.mouse.click(box.x + box.width / 2, box.y - 30); // the dimmed backdrop
+    await page.waitForSelector("#settingsSheet:not([open])", { state: "attached" });
+    await page.click("#settingsButton");
+    await page.waitForSelector("#settingsSheet[open]");
   });
 
   await step("saving keys closes Settings", async () => {
@@ -181,7 +204,25 @@ try {
     assert.equal(image.subarray(0, 2).toString("hex"), "ffd8", "image is a JPEG");
     assert.ok(image.length > 5000, `image too small: ${image.length} bytes`);
     assert.ok(omdbRequests.every((p) => p.apikey === "omdbkey1"));
+    await page.waitForFunction(() => document.getElementById("status").textContent === "Inception — tap Identify for another");
     await shot("03-result");
+  });
+
+  await step("an alternative OMDb doesn't know reopens the card with the message on top", async () => {
+    await page.click("#resultSheet details.alternatives summary");
+    await page.click("#resultSheet .alt-button:has-text('Interstellar')");
+    await page.waitForSelector("#resultSheet[open] #toast:not([hidden])");
+    assert.ok((await page.textContent("#toast")).includes("OMDb has no ratings for “Interstellar”"));
+    assert.equal(await page.textContent("#resultSheet #result-title"), "Inception");
+    const onTop = await page.evaluate(() => {
+      const toast = document.getElementById("toast");
+      const r = toast.getBoundingClientRect();
+      return toast.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+    });
+    assert.equal(onTop, true, "the toast is visible above the sheet");
+    await page.click("#toast");
+    await page.waitForSelector("#toast[hidden]", { state: "attached" });
+    assert.equal(await page.isVisible("#resultSheet[open]"), true);
   });
 
   await step("Not this one? swaps to the alternative and corrects history", async () => {
@@ -236,6 +277,18 @@ try {
     await page.click("#resultSheet .button.wide");
   });
 
+  await step("a pressed zoom pill keeps keyboard / VoiceOver focus", async () => {
+    await page.waitForSelector("#resultSheet:not([open])", { state: "attached" });
+    await page.focus("#zoomPills button:has-text('3×')");
+    await page.keyboard.press("Enter");
+    const state = await page.evaluate(() => ({
+      focused: document.activeElement?.textContent,
+      pressed: document.activeElement?.getAttribute("aria-pressed"),
+      transform: document.getElementById("preview").style.transform,
+    }));
+    assert.deepEqual(state, { focused: "3×", pressed: "true", transform: "scale(3)" });
+  });
+
   await step("History lists identifications newest first and opens a card", async () => {
     await page.click("#historyButton");
     await page.waitForSelector("#historySheet[open]");
@@ -255,6 +308,73 @@ try {
     await page.waitForSelector("#toast:not([hidden])");
     assert.ok((await page.textContent("#toast")).includes("OMDb API key was rejected"));
     assert.equal(await page.textContent("#toastAction"), "Settings");
+  });
+
+  await step("a search during an identification wins, and the late answer doesn't replace it", async () => {
+    await page.evaluate(() => localStorage.setItem("reelcheck.omdbKey", "omdbkey1"));
+    nextClaudeAnswer = { identified: true, title: "Inception", year: 2010, media_type: "movie", confidence: "high", evidence: "Title.", alternatives: [] };
+    claudeDelayMs = 1200;
+    await page.click("#identifyButton");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "Asking Claude…");
+    await page.click("#searchButton");
+    await page.fill("#searchTitle", "Cats");
+    await page.click("#searchForm button[type=submit]");
+    await page.waitForFunction(() => document.querySelector("#resultSheet[open] #result-title")?.textContent === "Cats");
+    await page.waitForTimeout(1600);
+    assert.equal(await page.textContent("#resultSheet #result-title"), "Cats");
+    assert.equal(await page.textContent("#status"), "Cats — tap Identify for another");
+    await page.click("#resultSheet .button.wide");
+  });
+
+  await step("a result that finishes while Settings is open waits in a toast", async () => {
+    await page.waitForSelector("#resultSheet:not([open])", { state: "attached" });
+    await page.click("#identifyButton");
+    await page.click("#settingsButton");
+    await page.fill("#anthropicKey", "sk-ant-typed");
+    await page.waitForSelector("#settingsSheet #toast:not([hidden])", { timeout: 5000 });
+    assert.ok((await page.textContent("#toast")).includes("Inception is ready."));
+    assert.equal(await page.isVisible("#settingsSheet[open]"), true);
+    assert.equal(await page.inputValue("#anthropicKey"), "sk-ant-typed");
+    claudeDelayMs = 0;
+    await page.click("#toastAction");
+    await page.waitForFunction(() => document.querySelector("#resultSheet[open] #result-title")?.textContent === "Inception");
+    assert.equal(await page.textContent("#status"), "Inception — tap Identify for another");
+    await page.click("#resultSheet .button.wide");
+  });
+
+  await step("in an iPhone Safari tab, first run shows the install hint instead of asking for keys", async () => {
+    const iphone = await browser.newContext({
+      viewport: { width: 390, height: 664 },
+      deviceScaleFactor: 2,
+      isMobile: true,
+      hasTouch: true,
+      userAgent: IPHONE_UA,
+      permissions: ["camera"],
+      serviceWorkers: "block",
+    });
+    try {
+      const tab = await iphone.newPage();
+      watch(tab);
+      await tab.goto(origin);
+      await tab.waitForFunction(() => document.getElementById("preview").videoWidth > 0);
+      assert.equal(await tab.isVisible("#installHint"), true);
+      assert.ok((await tab.textContent("#installHint")).includes("Add to Home Screen"));
+      assert.equal(await tab.isVisible("#settingsSheet[open]"), false);
+      if (shotsDir) {
+        await tab.waitForTimeout(450);
+        await tab.screenshot({ path: path.join(shotsDir, "07-safari-tab.png") });
+      }
+      // Dismissed, but no keys are saved yet: the hint comes back next time.
+      await tab.click("#installHintClose");
+      await tab.reload();
+      await tab.waitForSelector("#installHint:not([hidden])");
+      await tab.click("#settingsButton");
+      await tab.waitForSelector("#settingsSheet[open]");
+      const notice = await tab.textContent("#settingsNotice");
+      assert.ok(notice.includes("Safari tab") && notice.includes("Home Screen"), notice);
+    } finally {
+      await iphone.close();
+    }
   });
 
   await step("no console errors or CSP violations", async () => {

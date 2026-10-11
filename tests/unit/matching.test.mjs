@@ -32,3 +32,27 @@ test("isSameTitle never equates different sequel numbers", () => {
   assert.equal(isSameTitle("Toy Story 3", "toy story 3"), true);
   assert.equal(isSameTitle("Inception", "Incepti0n"), true);
 });
+
+test("isSameTitle rejects a different installment, even when only one side has a number", () => {
+  for (const [a, b] of [
+    ["Frozen 2", "Frozen"],
+    ["Moana 2", "Moana"],
+    ["Blade Runner 2049", "Blade Runner"],
+    ["John Wick 4", "John Wick"],
+    ["Toy Story 3", "Toy Story 4"],
+  ]) {
+    assert.equal(isSameTitle(a, b, 0.6), false, `${a} vs ${b}`);
+  }
+});
+
+test("isSameTitle treats a trailing roman numeral like its number", () => {
+  for (const [a, b] of [
+    ["Frozen 2", "Frozen II"],
+    ["Gladiator 2", "Gladiator II"],
+    ["John Wick 4", "John Wick: Chapter 4"],
+    ["Malcolm X", "Malcolm X"],
+    ["Inception", "Incepti0n"],
+  ]) {
+    assert.equal(isSameTitle(a, b, 0.6), true, `${a} vs ${b}`);
+  }
+});

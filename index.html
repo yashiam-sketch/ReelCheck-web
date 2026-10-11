@@ -40,9 +40,9 @@
     </header>
 
     <div id="installHint" class="install-hint" hidden>
-      <p>Install ReelCheck: tap
-        <svg class="inline-icon" viewBox="0 0 24 24" aria-label="Share"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-2v10H7V10H5z"/></svg>
-        then <strong>Add to Home Screen</strong>. Enter your keys in the installed app — it keeps its own settings.</p>
+      <p>Install ReelCheck first: tap <strong>•••</strong> → <strong>Share</strong> (or the
+        <svg class="inline-icon" viewBox="0 0 24 24" role="img" aria-label="Share"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-2v10H7V10H5z"/></svg>
+        button) → <strong>Add to Home Screen</strong>, keep <strong>Open as Web App</strong> on, then tap <strong>Add</strong>. Enter your keys in the installed app — it keeps its own settings.</p>
       <button id="installHintClose" type="button" class="icon-button" aria-label="Dismiss">✕</button>
     </div>
 
@@ -128,7 +128,7 @@
       </label>
       <p class="hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Create an Anthropic key</a>. ReelCheck uses Claude Haiku 5.5, the cheapest model; each identification costs a small fraction of a cent.</p>
 
-      <p class="hint privacy">When you tap Identify, the picture inside the box is sent to Anthropic. Titles are sent to OMDb. Nothing else leaves your phone.</p>
+      <p class="hint privacy">When you tap Identify, the picture inside the box goes to Anthropic. Titles go to OMDb, and posters load from IMDb's image server (Amazon). Your keys and history stay on this phone.</p>
 
       <div class="form-actions">
         <button id="settingsCancel" type="button" class="button">Close</button>

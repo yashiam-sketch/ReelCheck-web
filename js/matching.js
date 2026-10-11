@@ -1,7 +1,7 @@
 // Title normalization and fuzzy comparison (same rules as the iOS app's TitleMatching).
 
 const ARTICLES = new Set(["the", "a", "an"]);
-const ROMAN_NUMERALS = new Set(["ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"]);
+const ROMAN_NUMERALS = new Map(Object.entries({ ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" }));
 
 /**
  * Lowercases, strips accents and punctuation, maps "&" to "and", drops a leading article and
@@ -61,19 +61,22 @@ export function similarity(lhs, rhs) {
   return Math.max(editRatio, jaccard);
 }
 
-/** Sequel markers: numbers ("3", "2049") and a trailing roman numeral ("iii"). */
+/** Sequel markers as digits: numbers ("3", "2049") and a trailing roman numeral ("iii" → "3"). */
 function numberTokens(normalized) {
   const words = normalized.split(" ").filter(Boolean);
-  const tokens = new Set(words.filter((w) => /^\p{N}+$/u.test(w)));
+  const tokens = new Set(words.filter((w) => /^\p{N}+$/u.test(w)).map((w) => (/^[0-9]+$/.test(w) ? String(Number(w)) : w)));
   const last = words[words.length - 1];
-  if (last && ROMAN_NUMERALS.has(last)) tokens.add(last);
+  if (ROMAN_NUMERALS.has(last)) tokens.add(ROMAN_NUMERALS.get(last));
   return tokens;
 }
 
-/** Fuzzy equality that never equates different sequel numbers ("Toy Story 3" vs "Toy Story 4"). */
+/**
+ * Fuzzy equality that never equates different installments: "Toy Story 3" vs "Toy Story 4", or
+ * "Moana 2" vs "Moana". "Frozen 2" and "Frozen II" are the same.
+ */
 export function isSameTitle(lhs, rhs, threshold = 0.85) {
   const a = numberTokens(normalize(lhs));
   const b = numberTokens(normalize(rhs));
-  if (a.size && b.size && (a.size !== b.size || [...a].some((t) => !b.has(t)))) return false;
+  if (a.size !== b.size || [...a].some((t) => !b.has(t))) return false;
   return similarity(lhs, rhs) >= threshold;
 }

@@ -321,6 +321,16 @@ button {
   flex: 1;
 }
 
+/* While a sheet is open the toast lives inside it (the rest of the page is inert) and sticks to
+   the bottom of the visible part of the sheet. */
+.sheet .toast {
+  position: sticky;
+  left: auto;
+  right: auto;
+  bottom: calc(var(--safe-bottom) + 12px);
+  margin-top: 12px;
+}
+
 .toast-action {
   flex: none;
   border: 0;

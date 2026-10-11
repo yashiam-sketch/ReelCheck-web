@@ -5,11 +5,12 @@ import { Camera, LENS_NAMES } from "./camera.js";
 import { ClaudeVision } from "./claude.js";
 import { normalize } from "./matching.js";
 import { OmdbClient } from "./omdb.js";
-import { historyRow, resultCard, shareText } from "./render.js";
+import { el, historyRow, resultCard, shareText } from "./render.js";
 import { history, settings } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
 const ui = {
+  scanner: document.querySelector("main.scanner"),
   preview: $("preview"),
   viewfinder: $("viewfinder"),
   scanBox: $("scanBox"),
@@ -51,8 +52,19 @@ const ui = {
 };
 
 const camera = new Camera(ui.preview);
+const sheets = [ui.resultSheet, ui.searchSheet, ui.historySheet, ui.settingsSheet];
 const ZOOM_STOPS = [1, 2, 3, 5];
 const READY_STATUS = "Zoom in on the title, then tap Identify";
+const resultStatus = (entry) => `${entry.movie.title} — tap Identify for another`;
+
+// iPhone or iPad (iPadOS reports a Mac platform with touch), and whether ReelCheck runs as an
+// installed Home Screen web app. A Home Screen web app keeps its own storage, separate from
+// Safari's, so keys typed in a Safari tab don't carry over.
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+const inSafariTab = isIOS && !standalone;
+const SAFARI_TAB_NOTICE =
+  "You're in a Safari tab. Keys saved here stay in Safari and won't be in the Home Screen app, so add ReelCheck to your Home Screen first (••• → Share → Add to Home Screen) and enter them there.";
 
 let busy = false;
 let inFlight = null; // AbortController of the running identification or lookup
@@ -65,9 +77,19 @@ function setStatus(text) {
   ui.status.textContent = text;
 }
 
+/**
+ * Keeps the toast inside the open sheet, if any: a modal sheet covers the rest of the page and
+ * makes it inert, so a toast left there would be hidden and untappable.
+ */
+function placeToast() {
+  const host = sheets.find((sheet) => sheet.open) ?? ui.scanner;
+  if (ui.toast.parentElement !== host) host.append(ui.toast);
+}
+
 /** `tone`: "error" (default) or "info". */
 function showToast(message, action, tone = "error") {
   clearTimeout(toastTimer);
+  placeToast();
   ui.toast.dataset.tone = tone;
   ui.toastText.textContent = message;
   ui.toastAction.hidden = !action;
@@ -95,12 +117,16 @@ function setBusy(isBusy, text) {
   setStatus(text ?? READY_STATUS);
 }
 
-/** Runs `task` with a fresh AbortController; errors become toasts. */
+/**
+ * Runs `task` with a fresh AbortController; errors become toasts. A newer action (a search, a
+ * picked alternative) cancels the one still running: the newest action wins.
+ */
 async function run(statusText, task) {
-  if (busy) return;
+  inFlight?.abort();
   hideToast();
-  inFlight = new AbortController();
-  const { signal } = inFlight;
+  const controller = new AbortController();
+  inFlight = controller;
+  const { signal } = controller;
   setBusy(true, statusText);
   try {
     await task(signal);
@@ -109,8 +135,10 @@ async function run(statusText, task) {
     const keyProblem = ["missingKey", "invalidKey"].includes(error?.kind);
     showToast(error?.message || "Something went wrong. Try again.", keyProblem ? { label: "Settings", run: () => openSettings() } : null);
   } finally {
-    if (inFlight?.signal === signal) inFlight = null;
-    setBusy(false);
+    if (inFlight === controller) {
+      inFlight = null;
+      setBusy(false, ui.resultSheet.open && current ? resultStatus(current) : undefined);
+    }
   }
 }
 
@@ -131,6 +159,7 @@ async function startCamera(lens) {
     await camera.start(lens);
     ui.cameraMessage.hidden = true;
   } catch (error) {
+    if (error?.name === "CameraSuperseded") return; // a newer start, or a stop, took over
     if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
       showCameraMessage("Camera access is off. Tap Start camera and choose Allow. If you blocked it earlier, turn it back on in iPhone Settings → Apps → Safari → Camera, then reopen ReelCheck.", true);
     } else if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError") {
@@ -142,30 +171,41 @@ async function startCamera(lens) {
   renderZoom();
 }
 
+function zoomPill(stop) {
+  return el("button", {
+    type: "button",
+    class: "pill",
+    "data-stop": stop,
+    "aria-label": `Zoom ${stop} times`,
+    text: `${stop}×`,
+    onclick: () => {
+      camera.setZoom(stop);
+      renderZoom();
+    },
+  });
+}
+
 function renderZoom() {
   const running = camera.isRunning;
-  ui.zoomPills.replaceChildren();
   ui.zoomPills.hidden = !running;
   ui.zoomLabel.hidden = !running;
+  ui.lensButton.disabled = false;
   if (!running) {
     ui.lensButton.hidden = true;
     return;
   }
   const stops = ZOOM_STOPS.filter((z) => z >= camera.minZoom - 0.01 && z <= camera.maxZoom + 0.01);
+  // Rebuild the pills only when the stops change and otherwise update them in place, so the pill
+  // a VoiceOver or keyboard user just pressed keeps focus and its new state is announced.
+  if (ui.zoomPills.dataset.stops !== stops.join(",")) {
+    ui.zoomPills.dataset.stops = stops.join(",");
+    ui.zoomPills.replaceChildren(...stops.map(zoomPill));
+  }
   const nearest = stops.reduce((best, z) => (Math.abs(z - camera.zoom) < Math.abs(best - camera.zoom) ? z : best), stops[0]);
-  for (const stop of stops) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "pill";
-    button.textContent = `${stop}×`;
-    button.setAttribute("aria-label", `Zoom ${stop} times`);
+  for (const button of ui.zoomPills.children) {
+    const stop = Number(button.dataset.stop);
     button.setAttribute("aria-pressed", String(Math.abs(camera.zoom - stop) < 0.05));
-    if (stop === nearest) button.classList.add("near");
-    button.addEventListener("click", () => {
-      camera.setZoom(stop);
-      renderZoom();
-    });
-    ui.zoomPills.append(button);
+    button.classList.toggle("near", stop === nearest);
   }
   // The label only matters between stops; at a stop the highlighted pill says it.
   const atStop = stops.some((stop) => Math.abs(camera.zoom - stop) < 0.05);
@@ -210,6 +250,7 @@ for (const type of ["gesturestart", "gesturechange"]) {
 ui.lensButton.addEventListener("click", async () => {
   const next = camera.nextLens;
   if (!next || busy) return;
+  ui.lensButton.disabled = true; // until renderZoom() runs after the switch
   await startCamera(next);
 });
 
@@ -260,6 +301,7 @@ function identify() {
 
   run("Asking Claude…", async (signal) => {
     const answer = await new ClaudeVision(settings.anthropicKey).identify(image, { signal });
+    if (signal.aborted) return;
     if (!answer.identified) {
       showToast("Couldn't tell which title this is. Zoom in on the title, or open the show's info screen, and try again.", {
         label: "Search",
@@ -277,6 +319,7 @@ function identify() {
       const guess = guesses[guessIndex];
       found = await omdb.lookup(guess.title, { year: guess.year, type: guess.type, signal });
     }
+    if (signal.aborted) return;
     if (!found) {
       showToast(`Claude thinks this is “${answer.title}”, but OMDb has no ratings for it.`, {
         label: "Search",
@@ -308,6 +351,7 @@ function search(title, year) {
   }
   run(`Looking up ${title}…`, async (signal) => {
     const found = await new OmdbClient(settings.omdbKey).lookup(title, { year, signal });
+    if (signal.aborted) return;
     if (!found) {
       showToast(`No match for “${title}”. Check the spelling or add the year.`, { label: "Search", run: () => openSearch(title, year) });
       return;
@@ -339,9 +383,11 @@ function choose(alternative, previous) {
     } else {
       movie = (await omdb.lookup(alternative.title, { year: alternative.year, signal }))?.movie;
     }
+    if (signal.aborted) return;
     if (!movie) {
+      // Back to the card the user came from, with the message shown on it.
+      if (previous && !typingInSheet()) showResult(previous);
       showToast(`OMDb has no ratings for “${alternative.title}”.`);
-      if (previous) showResult(previous);
       return;
     }
     const others = (previous?.alternatives ?? []).filter((alt) => alt !== alternative);
@@ -359,35 +405,49 @@ function choose(alternative, previous) {
     };
     if (previous) history.replace(previous.id, entry);
     else history.add(entry);
-    current = entry;
-    showResult(entry);
+    reveal(entry);
   });
 }
 
 function present(entry) {
   history.add(entry);
+  reveal(entry);
+}
+
+/** Settings or Search is open: the user may be typing there, so a finished lookup waits. */
+const typingInSheet = () => ui.settingsSheet.open || ui.searchSheet.open;
+
+/** Shows the card for `entry`, or offers it in a toast instead of closing Settings or Search. */
+function reveal(entry) {
   current = entry;
-  showResult(entry);
+  if (typingInSheet()) showToast(`${entry.movie.title} is ready.`, { label: "Show", run: () => showResult(entry) }, "info");
+  else showResult(entry);
 }
 
 // MARK: - Sheets
 
 function openSheet(dialog) {
-  for (const sheet of [ui.resultSheet, ui.searchSheet, ui.historySheet, ui.settingsSheet]) {
+  for (const sheet of sheets) {
     if (sheet !== dialog && sheet.open) sheet.close();
   }
   if (!dialog.open) dialog.showModal();
+  placeToast();
 }
 
 function closeSheet(dialog) {
   if (dialog.open) dialog.close();
 }
 
-// Tapping the dimmed backdrop closes a sheet (the dialog element itself is the backdrop area).
-for (const sheet of [ui.resultSheet, ui.searchSheet, ui.historySheet, ui.settingsSheet]) {
+// Tapping the dimmed backdrop closes a sheet. A tap on the sheet's own padding also targets the
+// dialog element, so only a tap outside the sheet's box counts.
+for (const sheet of sheets) {
   sheet.addEventListener("click", (event) => {
-    if (event.target === sheet) sheet.close();
+    if (event.target !== sheet) return;
+    const box = sheet.getBoundingClientRect();
+    const inside = event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+    if (!inside) sheet.close();
   });
+  sheet.addEventListener("close", placeToast);
 }
 
 function showResult(entry) {
@@ -401,7 +461,7 @@ function showResult(entry) {
   );
   openSheet(ui.resultSheet);
   ui.resultSheet.scrollTop = 0;
-  setStatus(`${entry.movie.title} — tap Identify for another`);
+  if (!busy) setStatus(resultStatus(entry)); // a running lookup keeps its status
 }
 
 async function shareResult(entry) {
@@ -468,9 +528,10 @@ ui.historyDone.addEventListener("click", () => closeSheet(ui.historySheet));
 
 function openSettings(notice = "") {
   const firstRun = !settings.omdbKey || !settings.anthropicKey;
+  const text = [notice, inSafariTab ? SAFARI_TAB_NOTICE : ""].filter(Boolean).join(" ");
   ui.settingsIntro.hidden = !firstRun;
-  ui.settingsNotice.hidden = !notice;
-  ui.settingsNotice.textContent = notice;
+  ui.settingsNotice.hidden = !text;
+  ui.settingsNotice.textContent = text;
   ui.omdbKeyInput.value = settings.omdbKey;
   ui.anthropicKeyInput.value = settings.anthropicKey;
   openSheet(ui.settingsSheet);
@@ -489,9 +550,10 @@ ui.settingsCancel.addEventListener("click", () => closeSheet(ui.settingsSheet));
 // MARK: - Install hint (iPhone Safari, not yet on the Home Screen)
 
 function maybeShowInstallHint() {
-  const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  ui.installHint.hidden = standalone || !isIOS || settings.installHintDismissed;
+  // Until keys are saved, the hint comes back even if it was dismissed: it's the only place that
+  // says to install first, because keys typed in a Safari tab don't reach the Home Screen app.
+  const keysSaved = Boolean(settings.omdbKey && settings.anthropicKey);
+  ui.installHint.hidden = !inSafariTab || (settings.installHintDismissed && keysSaved);
 }
 
 ui.installHintClose.addEventListener("click", () => {
@@ -516,4 +578,6 @@ if ("serviceWorker" in navigator) {
 setStatus(READY_STATUS);
 maybeShowInstallHint();
 startCamera();
-if (!settings.omdbKey || !settings.anthropicKey) openSettings();
+// In a Safari tab on iPhone the install hint asks to install first; Settings would cover it and
+// ask for keys that the Home Screen app can't see.
+if ((!settings.omdbKey || !settings.anthropicKey) && !inSafariTab) openSettings();

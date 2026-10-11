@@ -126,3 +126,53 @@ test("special characters in titles are encoded", async () => {
   await new OmdbClient("k", { fetchImpl }).lookup("Fast & Furious: Hobbs + Shaw");
   assert.equal(calls[0].t ?? calls[1].t, "Fast & Furious: Hobbs + Shaw");
 });
+
+test("lookup with a year that's one off prefers the same title from that year over another version", async () => {
+  const NOSFERATU_1922 = { ...INCEPTION, Title: "Nosferatu", Year: "1922", imdbID: "tt0013442" };
+  const NOSFERATU_2024 = { ...INCEPTION, Title: "Nosferatu", Year: "2024", imdbID: "tt5040012" };
+  const answer = (p) => {
+    if (p.t && p.y === "2024") return json(NOSFERATU_2024);
+    if (p.t && p.y) return json({ Response: "False", Error: "Movie not found!" });
+    if (p.t) return json(NOSFERATU_1922); // OMDb's yearless t= can return the original
+    if (p.s) return json({ Search: [
+      { Title: "Nosferatu", Year: "1922", imdbID: "tt0013442", Type: "movie", Poster: "N/A" },
+      { Title: "Nosferatu", Year: "2024", imdbID: "tt5040012", Type: "movie", Poster: "N/A" },
+    ], Response: "True" });
+    if (p.i === "tt5040012") return json(NOSFERATU_2024);
+    return json({ Response: "False", Error: "Incorrect IMDb ID." });
+  };
+
+  const offByOne = scriptedFetch(answer);
+  const found = await new OmdbClient("k", { fetchImpl: offByOne.fetchImpl }).lookup("Nosferatu", { year: 2025, type: "movie" });
+  assert.equal(found.movie.imdbID, "tt5040012");
+  assert.equal(found.matchScore, 1);
+  assert.deepEqual(found.alternatives.map((a) => a.imdbID), ["tt0013442"]);
+
+  const exactYear = scriptedFetch(answer);
+  const exact = await new OmdbClient("k", { fetchImpl: exactYear.fetchImpl }).lookup("Nosferatu", { year: 2024, type: "movie" });
+  assert.equal(exact.movie.imdbID, "tt5040012");
+  assert.equal(exactYear.calls.filter((c) => c.t).length, 1);
+  assert.ok(!exactYear.calls.some((c) => c.i));
+});
+
+test("lookup never settles for another installment", async () => {
+  const searchOnly = (hits) => scriptedFetch((p) => {
+    if (p.s) return json({ Search: hits, Response: "True" });
+    if (p.i === "tt10366206") return json({ ...INCEPTION, Title: "John Wick: Chapter 4", Year: "2023", imdbID: "tt10366206" });
+    if (p.i) return json({ ...INCEPTION, Title: "John Wick", Year: "2014", imdbID: "tt2911666" });
+    return json({ Response: "False", Error: "Movie not found!" });
+  });
+  const both = searchOnly([
+    { Title: "John Wick", Year: "2014", imdbID: "tt2911666", Type: "movie", Poster: "N/A" },
+    { Title: "John Wick: Chapter 4", Year: "2023", imdbID: "tt10366206", Type: "movie", Poster: "N/A" },
+  ]);
+  assert.equal((await new OmdbClient("k", { fetchImpl: both.fetchImpl }).lookup("John Wick 4")).movie.imdbID, "tt10366206");
+
+  const predecessorOnly = searchOnly([{ Title: "John Wick", Year: "2014", imdbID: "tt2911666", Type: "movie", Poster: "N/A" }]);
+  assert.equal(await new OmdbClient("k", { fetchImpl: predecessorOnly.fetchImpl }).lookup("John Wick 4"), null);
+
+  // An exact t= answer for the predecessor is rejected too ("Moana 2" → "Moana").
+  const exactPredecessor = scriptedFetch((p) =>
+    p.t ? json({ ...INCEPTION, Title: "Moana", Year: "2016", imdbID: "tt3521164" }) : json({ Response: "False", Error: "Movie not found!" }));
+  assert.equal(await new OmdbClient("k", { fetchImpl: exactPredecessor.fetchImpl }).lookup("Moana 2"), null);
+});
