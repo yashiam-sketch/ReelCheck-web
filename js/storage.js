@@ -1,6 +1,8 @@
 // Settings and history, kept in this browser's localStorage only (nothing is sent anywhere).
 // On iPhone, a Home Screen web app has its own storage, separate from Safari's.
 
+// Storage keys keep the app's original "reelcheck." prefix so keys and history saved before the
+// rename to ShowLens are still found.
 const KEYS = {
   omdb: "reelcheck.omdbKey",
   anthropic: "reelcheck.anthropicKey",

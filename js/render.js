@@ -166,8 +166,8 @@ function ago(timestamp) {
 export function historyRow(entry, { onOpen, onDelete }) {
   const { movie } = entry;
   const compact = [
-    movie.imdbRating != null ? `★ ${movie.imdbRating.toFixed(1)}` : null,
-    movie.rottenTomatoes != null ? `🍅 ${movie.rottenTomatoes}%` : null,
+    movie.imdbRating != null ? `IMDb ${movie.imdbRating.toFixed(1)}` : null,
+    movie.rottenTomatoes != null ? `RT ${movie.rottenTomatoes}%` : null,
     movie.metascore != null ? `MC ${movie.metascore}` : null,
   ].filter(Boolean).join(" · ");
   return el("li", { class: "history-row" },

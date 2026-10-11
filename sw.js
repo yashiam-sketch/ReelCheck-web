@@ -1,6 +1,6 @@
 // Network-first service worker: the app shell loads offline and opens fast from cache, while
 // updates show up as soon as the phone is online. API calls (Claude, OMDb) are never cached.
-const CACHE = "reelcheck-v1";
+const CACHE = "showlens-v2";
 const SHELL = [
   "./",
   "./index.html",
@@ -17,6 +17,7 @@ const SHELL = [
   "./icons/apple-touch-icon.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-maskable-512.png",
 ];
 
 self.addEventListener("install", (event) => {

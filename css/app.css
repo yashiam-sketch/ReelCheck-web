@@ -396,6 +396,16 @@ button {
   align-items: center;
 }
 
+#historySheet .sheet-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+#historySheet .sheet-header h2 {
+  font-size: 28px;
+  letter-spacing: -0.4px;
+}
+
 .sheet-header h2 {
   margin: 0;
 }
@@ -686,6 +696,53 @@ button {
 .history-meta {
   color: var(--muted);
   font-size: 13px;
+}
+
+.history-footer {
+  margin-top: 20px;
+}
+
+.clear-history {
+  width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 90, 82, 0.1);
+  color: var(--danger);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.clear-history svg {
+  width: 18px;
+  height: 18px;
+}
+
+.history-confirm {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.history-confirm p {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.history-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.button.destructive {
+  background: var(--danger);
+  color: #fff;
 }
 
 .empty {

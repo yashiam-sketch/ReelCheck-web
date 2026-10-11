@@ -1,9 +1,9 @@
-# ReelCheck (web app)
+# ShowLens (web app)
 
 Point your iPhone at the TV, zoom in on the movie or show, tap **Identify**, and get its
 **IMDb** rating, **Rotten Tomatoes** Tomatometer and **Metacritic** score.
 
-This is the web version of ReelCheck. It runs in Safari and installs to the Home Screen, so it
+This is the web version of ShowLens (formerly ReelCheck). It runs in Safari and installs to the Home Screen, so it
 needs no Mac, no App Store, no Developer Mode and no re-signing.
 
 It's live at **<https://yashiam-sketch.github.io/ReelCheck-web/>**, published with GitHub
@@ -16,16 +16,16 @@ repository (Settings → Pages → Source: GitHub Actions). No keys are stored i
 2. Tap **•••** at the bottom right (or the **Share** button, if your toolbar shows one) →
    **Share** → scroll down or tap **View More** → **Add to Home Screen**. Leave
    **Open as Web App** turned on, then tap **Add**.
-3. Open **ReelCheck** from the Home Screen and allow camera access.
+3. Open **ShowLens** from the Home Screen and allow camera access.
 4. Paste your two keys (they are saved only on your phone):
    - **OMDb** (free, for ratings): <https://www.omdbapi.com/apikey.aspx>. Choose FREE, then click
      the activation link OMDb emails you. 1,000 lookups a day.
    - **Anthropic** (identifies the title from the picture): <https://console.anthropic.com/settings/keys>.
-     ReelCheck uses **Claude Haiku 5.5**, the cheapest Claude model; one identification is a small
+     ShowLens uses **Claude Haiku 5.5**, the cheapest Claude model; one identification is a small
      fraction of a cent.
 
 Enter the keys in the Home Screen app, not in a Safari tab: on iPhone, a Home Screen web app
-keeps its own storage, separate from Safari's. That's why, in a Safari tab, ReelCheck shows how
+keeps its own storage, separate from Safari's. That's why, in a Safari tab, ShowLens shows how
 to install it instead of asking for keys.
 
 ## Using it
@@ -40,12 +40,21 @@ to install it instead of asking for keys.
 - **Not this one?** on the result lists other matches. **Search** (magnifying glass) looks up a
   title by name. **History** keeps your last 100 results on the phone.
 
+## The camera prompt
+
+iPhone Home Screen web apps can't remember camera permission between launches (a WebKit
+limitation; Apple's bug is still open), so iOS asks again each time the app was fully closed.
+Within a session ShowLens avoids extra prompts: it resumes by itself after short trips away and
+shows a **Resume camera** button after longer ones, which reuses the permission. To stop the
+prompt entirely, set **Settings → Apps → Safari → Camera → Allow** (this applies to every
+website). The native App Store version asks only once.
+
 ## Privacy
 
 - When you tap Identify, the picture inside the box is sent to Anthropic's API, directly from your
   phone. Titles are sent to OMDb. Posters load from IMDb's image server (Amazon,
   `m.media-amazon.com`), which sees your IP address and which posters you view.
-- The app's files are served by GitHub Pages; ReelCheck has no server of its own.
+- The app's files are served by GitHub Pages; ShowLens has no server of its own.
 - Your keys and history are stored in local storage on your phone. Each key is sent only to
   its own service.
 - Keys typed in a Safari tab are stored for the whole `yashiam-sketch.github.io` site, so any
@@ -58,7 +67,7 @@ to install it instead of asking for keys.
   Tomatoes button opens a search for the title.
 - Safari controls the camera. On some iPhones only the main lens is offered to web pages, and
   zoom beyond the lens is digital. Lens switching relies on Safari's English camera names, so on
-  an iPhone set to another language the lens button stays hidden and ReelCheck uses the camera
+  an iPhone set to another language the lens button stays hidden and ShowLens uses the camera
   Safari picks.
 
 ## How it works

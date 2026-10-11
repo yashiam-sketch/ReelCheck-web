@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' https://api.anthropic.com https://www.omdbapi.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>ReelCheck</title>
+  <title>ShowLens</title>
   <meta name="description" content="Point your iPhone at the TV and get IMDb, Rotten Tomatoes and Metacritic ratings for what's on.">
   <meta name="theme-color" content="#0b0b12">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ReelCheck">
+  <meta name="apple-mobile-web-app-title" content="ShowLens">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="manifest" href="manifest.webmanifest">
@@ -40,7 +40,7 @@
     </header>
 
     <div id="installHint" class="install-hint" hidden>
-      <p>Install ReelCheck first: tap <strong>•••</strong> → <strong>Share</strong> (or the
+      <p>Install ShowLens first: tap <strong>•••</strong> → <strong>Share</strong> (or the
         <svg class="inline-icon" viewBox="0 0 24 24" role="img" aria-label="Share"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-2v10H7V10H5z"/></svg>
         button) → <strong>Add to Home Screen</strong>, keep <strong>Open as Web App</strong> on, then tap <strong>Add</strong>. Enter your keys in the installed app — it keeps its own settings.</p>
       <button id="installHintClose" type="button" class="icon-button" aria-label="Dismiss">✕</button>
@@ -100,12 +100,24 @@
   <dialog id="historySheet" class="sheet" aria-labelledby="historyHeading">
     <div class="grabber" aria-hidden="true"></div>
     <div class="sheet-header">
-      <button id="historyClear" type="button" class="link-button">Clear all</button>
       <h2 id="historyHeading">History</h2>
       <button id="historyDone" type="button" class="link-button strong">Done</button>
     </div>
     <ul id="historyList" class="history-list"></ul>
     <p id="historyEmpty" class="empty">Titles you identify show up here.</p>
+    <div id="historyFooter" class="history-footer">
+      <button id="historyClear" type="button" class="clear-history">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-.9 11.1A2 2 0 0 1 15.1 22H8.9a2 2 0 0 1-2-1.9L6 9zm4 2v8h1.5v-8H10zm2.5 0v8H14v-8h-1.5z"/></svg>
+        Clear History
+      </button>
+      <div id="historyConfirm" class="history-confirm" role="group" aria-labelledby="historyConfirmText" hidden>
+        <p id="historyConfirmText"></p>
+        <div class="history-confirm-actions">
+          <button id="historyConfirmCancel" type="button" class="button">Cancel</button>
+          <button id="historyConfirmClear" type="button" class="button destructive">Clear</button>
+        </div>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="settingsSheet" class="sheet" aria-labelledby="settingsHeading">
@@ -113,7 +125,7 @@
     <form id="settingsForm" class="form" autocomplete="off">
       <h2 id="settingsHeading">Settings</h2>
       <div id="settingsIntro" class="intro">
-        <p><strong>Welcome to ReelCheck.</strong> Point your camera at the TV, zoom until the title fills the box and tap Identify. Claude reads the screen and OMDb supplies IMDb, Rotten Tomatoes and Metacritic ratings.</p>
+        <p><strong>Welcome to ShowLens.</strong> Point your camera at the TV, zoom until the title fills the box and tap Identify. Claude reads the screen and OMDb supplies IMDb, Rotten Tomatoes and Metacritic ratings.</p>
         <p>Both services need a key. They are stored only on this device.</p>
       </div>
       <p id="settingsNotice" class="notice" hidden></p>
@@ -126,7 +138,9 @@
       <label>Anthropic API key <span class="optional">(identifies the title)</span>
         <input id="anthropicKey" name="anthropic" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…">
       </label>
-      <p class="hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Create an Anthropic key</a>. ReelCheck uses Claude Haiku 5.5, the cheapest model; each identification costs a small fraction of a cent.</p>
+      <p class="hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Create an Anthropic key</a>. ShowLens uses Claude Haiku 5.5, the cheapest model; each identification costs a small fraction of a cent.</p>
+
+      <p class="hint"><strong>Camera asks every time you open the app?</strong> iPhone doesn't let Home Screen web apps remember camera access. To stop the prompt, go to iPhone Settings → Apps → Safari → Camera → Allow (this applies to all websites). The App Store version will ask only once.</p>
 
       <p class="hint privacy">When you tap Identify, the picture inside the box goes to Anthropic. Titles go to OMDb, and posters load from IMDb's image server (Amazon). Your keys and history stay on this phone.</p>
 

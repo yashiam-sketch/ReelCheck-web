@@ -1,4 +1,4 @@
-// ReelCheck web app: point the camera at the TV, tap Identify, get IMDb / Rotten Tomatoes /
+// ShowLens web app: point the camera at the TV, tap Identify, get IMDb / Rotten Tomatoes /
 // Metacritic ratings. Claude reads the screen; OMDb supplies the ratings.
 
 import { Camera, LENS_NAMES } from "./camera.js";
@@ -40,7 +40,12 @@ const ui = {
   historySheet: $("historySheet"),
   historyList: $("historyList"),
   historyEmpty: $("historyEmpty"),
+  historyFooter: $("historyFooter"),
   historyClear: $("historyClear"),
+  historyConfirm: $("historyConfirm"),
+  historyConfirmText: $("historyConfirmText"),
+  historyConfirmCancel: $("historyConfirmCancel"),
+  historyConfirmClear: $("historyConfirmClear"),
   historyDone: $("historyDone"),
   settingsSheet: $("settingsSheet"),
   settingsForm: $("settingsForm"),
@@ -57,14 +62,14 @@ const ZOOM_STOPS = [1, 2, 3, 5];
 const READY_STATUS = "Zoom in on the title, then tap Identify";
 const resultStatus = (entry) => `${entry.movie.title} — tap Identify for another`;
 
-// iPhone or iPad (iPadOS reports a Mac platform with touch), and whether ReelCheck runs as an
+// iPhone or iPad (iPadOS reports a Mac platform with touch), and whether ShowLens runs as an
 // installed Home Screen web app. A Home Screen web app keeps its own storage, separate from
 // Safari's, so keys typed in a Safari tab don't carry over.
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
 const inSafariTab = isIOS && !standalone;
 const SAFARI_TAB_NOTICE =
-  "You're in a Safari tab. Keys saved here stay in Safari and won't be in the Home Screen app, so add ReelCheck to your Home Screen first (••• → Share → Add to Home Screen) and enter them there.";
+  "You're in a Safari tab. Keys saved here stay in Safari and won't be in the Home Screen app, so add ShowLens to your Home Screen first (••• → Share → Add to Home Screen) and enter them there.";
 
 let busy = false;
 let inFlight = null; // AbortController of the running identification or lookup
@@ -144,15 +149,16 @@ async function run(statusText, task) {
 
 // MARK: - Camera
 
-function showCameraMessage(text, canRetry) {
+function showCameraMessage(text, canRetry, retryLabel = "Start camera") {
   ui.cameraMessageText.textContent = text;
   ui.cameraRetry.hidden = !canRetry;
+  ui.cameraRetry.textContent = retryLabel;
   ui.cameraMessage.hidden = false;
 }
 
 async function startCamera(lens) {
   if (!Camera.isSupported) {
-    showCameraMessage("This browser can't use the camera. Open ReelCheck in Safari, or add it to your Home Screen from Safari.", false);
+    showCameraMessage("This browser can't use the camera. Open ShowLens in Safari, or add it to your Home Screen from Safari.", false);
     return;
   }
   try {
@@ -161,7 +167,7 @@ async function startCamera(lens) {
   } catch (error) {
     if (error?.name === "CameraSuperseded") return; // a newer start, or a stop, took over
     if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
-      showCameraMessage("Camera access is off. Tap Start camera and choose Allow. If you blocked it earlier, turn it back on in iPhone Settings → Apps → Safari → Camera, then reopen ReelCheck.", true);
+      showCameraMessage("Camera access is off. Tap Start camera and choose Allow. If you blocked it earlier, turn it back on in iPhone Settings → Apps → Safari → Camera, then reopen ShowLens.", true);
     } else if (error?.name === "NotFoundError" || error?.name === "OverconstrainedError") {
       showCameraMessage("No back camera was found.", false);
     } else {
@@ -254,14 +260,28 @@ ui.lensButton.addEventListener("click", async () => {
   await startCamera(next);
 });
 
-ui.cameraRetry.addEventListener("click", () => startCamera());
+ui.cameraRetry.addEventListener("click", () => startCamera(camera.lens));
+
+// iOS keeps a Home Screen web app's camera permission only while the app stays open, and
+// re-asks when the camera restarts without a tap after about a minute off. So: short trips away
+// resume on their own; after longer ones a "Resume camera" tap restarts it, which WebKit lets
+// reuse the existing permission (for up to ~10 minutes) instead of asking again.
+const AUTO_RESUME_MS = 50_000;
+let hiddenAt = 0;
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    camera.stop();
+    hiddenAt = Date.now();
+    camera.stop(); // a stream left running through a screen lock triggers a fresh prompt on iOS
     renderZoom();
-  } else if (!ui.cameraMessage.hidden || !camera.isRunning) {
+    return;
+  }
+  if (camera.isRunning) return;
+  const awayFor = hiddenAt ? Date.now() - hiddenAt : 0;
+  if (awayFor < AUTO_RESUME_MS || !ui.cameraMessage.hidden) {
     startCamera(camera.lens);
+  } else {
+    showCameraMessage("Welcome back. Tap to turn the camera on again.", true, "Resume camera");
   }
 });
 
@@ -499,7 +519,8 @@ ui.searchCancel.addEventListener("click", () => closeSheet(ui.searchSheet));
 function renderHistory() {
   const items = history.list();
   ui.historyEmpty.hidden = items.length > 0;
-  ui.historyClear.hidden = items.length === 0;
+  ui.historyFooter.hidden = items.length === 0;
+  showClearConfirmation(false);
   ui.historyList.replaceChildren(
     ...items.map((entry) =>
       historyRow(entry, {
@@ -518,11 +539,25 @@ function openHistory() {
   openSheet(ui.historySheet);
 }
 
-ui.historyClear.addEventListener("click", () => {
-  if (window.confirm("Clear all history?")) {
-    history.clear();
-    renderHistory();
+/** "Clear History" asks inline, like iOS: the button turns into Cancel / Clear. */
+function showClearConfirmation(show) {
+  ui.historyClear.hidden = show;
+  ui.historyConfirm.hidden = !show;
+  if (show) {
+    const count = history.list().length;
+    ui.historyConfirmText.textContent = `Remove ${count === 1 ? "the 1 title" : `all ${count} titles`} from your history?`;
+    ui.historyConfirmCancel.focus();
   }
+}
+
+ui.historyClear.addEventListener("click", () => showClearConfirmation(true));
+ui.historyConfirmCancel.addEventListener("click", () => {
+  showClearConfirmation(false);
+  ui.historyClear.focus();
+});
+ui.historyConfirmClear.addEventListener("click", () => {
+  history.clear();
+  renderHistory();
 });
 ui.historyDone.addEventListener("click", () => closeSheet(ui.historySheet));
 

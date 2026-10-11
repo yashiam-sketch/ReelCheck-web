@@ -377,6 +377,53 @@ try {
     }
   });
 
+  await step("Clear History asks inline, Cancel keeps everything, Clear empties it", async () => {
+    await page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
+    await page.click("#historyButton");
+    await page.waitForSelector("#historySheet[open]");
+    const before = await page.locator(".history-row").count();
+    assert.ok(before > 0);
+    await page.click("#historyClear");
+    assert.equal(await page.isVisible("#historyConfirm"), true);
+    assert.ok((await page.textContent("#historyConfirmText")).includes(`all ${before} titles`));
+    await shot("08-clear-confirm");
+    await page.click("#historyConfirmCancel");
+    assert.equal(await page.locator(".history-row").count(), before);
+    assert.equal(await page.isVisible("#historyClear"), true);
+    await page.click("#historyClear");
+    await page.click("#historyConfirmClear");
+    assert.equal(await page.locator(".history-row").count(), 0);
+    assert.equal(await page.isVisible("#historyEmpty"), true);
+    assert.equal(await page.isVisible("#historyFooter"), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem("reelcheck.history")), null);
+  });
+
+  await step("after a long time away the camera waits for a Resume tap (keeps iOS from re-asking)", async () => {
+    await page.evaluate(() => document.querySelectorAll("dialog[open]").forEach((d) => d.close()));
+    const setHidden = (hidden, offsetMs = 0) => page.evaluate(([h, offset]) => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => h });
+      if (offset) {
+        const realNow = Date.now.bind(Date);
+        Date.now = () => realNow() + offset;
+      }
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, [hidden, offsetMs]);
+    // Short trip away: resumes by itself.
+    await setHidden(true);
+    await page.waitForFunction(() => document.getElementById("preview").srcObject === null);
+    await setHidden(false);
+    await page.waitForFunction(() => document.getElementById("preview").videoWidth > 0);
+    assert.equal(await page.isVisible("#cameraMessage"), false);
+    // Long trip away (simulated 2 minutes): asks for a tap instead of restarting silently.
+    await setHidden(true);
+    await setHidden(false, 120_000);
+    await page.waitForSelector("#cameraMessage:not([hidden])");
+    assert.equal((await page.textContent("#cameraRetry")).trim(), "Resume camera");
+    await shot("09-resume");
+    await page.click("#cameraRetry");
+    await page.waitForFunction(() => document.getElementById("preview").videoWidth > 0 && document.getElementById("cameraMessage").hidden);
+  });
+
   await step("no console errors or CSP violations", async () => {
     assert.deepEqual(problems, []);
   });
