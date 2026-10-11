@@ -1,0 +1,11 @@
+{
+  "name": "reelcheck-web",
+  "private": true,
+  "type": "module",
+  "description": "ReelCheck web app: identify the movie on your TV and see its ratings.",
+  "scripts": {
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "serve": "npx --yes http-server -p 8080 -c-1 ."
+  }
+}

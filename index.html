@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' https://api.anthropic.com https://www.omdbapi.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>ReelCheck</title>
+  <meta name="description" content="Point your iPhone at the TV and get IMDb, Rotten Tomatoes and Metacritic ratings for what's on.">
+  <meta name="theme-color" content="#0b0b12">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="ReelCheck">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <main class="scanner">
+    <video id="preview" class="preview" autoplay muted playsinline></video>
+
+    <div id="viewfinder" class="viewfinder">
+      <div id="scanBox" class="scan-box" aria-hidden="true">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+      </div>
+    </div>
+
+    <div id="cameraMessage" class="camera-message" hidden>
+      <svg class="camera-message-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+      <p id="cameraMessageText"></p>
+      <button id="cameraRetry" type="button" class="button primary">Start camera</button>
+    </div>
+
+    <header class="top">
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+    </header>
+
+    <div id="installHint" class="install-hint" hidden>
+      <p>Install ReelCheck: tap
+        <svg class="inline-icon" viewBox="0 0 24 24" aria-label="Share"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-2v10H7V10H5z"/></svg>
+        then <strong>Add to Home Screen</strong>. Enter your keys in the installed app — it keeps its own settings.</p>
+      <button id="installHintClose" type="button" class="icon-button" aria-label="Dismiss">✕</button>
+    </div>
+
+    <div class="controls">
+      <div class="zoom-row">
+        <div id="zoomPills" class="zoom-pills" role="group" aria-label="Zoom"></div>
+        <span id="zoomLabel" class="zoom-label" aria-hidden="true"></span>
+        <button id="lensButton" type="button" class="pill lens" hidden></button>
+      </div>
+      <nav class="bottom-bar" aria-label="Actions">
+        <button id="historyButton" type="button" class="round" aria-label="History">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.25 2.52.77-1.28-3.52-2.09V8H12z"/></svg>
+        </button>
+        <button id="identifyButton" type="button" class="shutter" aria-label="Identify the movie in the box">
+          <span class="shutter-ring"></span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2 1.9 5.1L19 9l-5.1 1.9L12 16l-1.9-5.1L5 9l5.1-1.9L12 2zm7 11 .95 2.55L22.5 16.5l-2.55.95L19 20l-.95-2.55-2.55-.95 2.55-.95L19 13zM6 15l.7 1.8 1.8.7-1.8.7L6 20l-.7-1.8-1.8-.7 1.8-.7L6 15z"/></svg>
+        </button>
+        <button id="searchButton" type="button" class="round" aria-label="Search by title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10 3a7 7 0 0 1 5.6 11.2l5.1 5.1-1.4 1.4-5.1-5.1A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>
+        </button>
+        <button id="settingsButton" type="button" class="round" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.9c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5-2.2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+        </button>
+      </nav>
+    </div>
+
+    <div id="toast" class="toast" role="alert" hidden>
+      <span id="toastText"></span>
+      <button id="toastAction" type="button" class="toast-action" hidden></button>
+    </div>
+  </main>
+
+  <dialog id="resultSheet" class="sheet" aria-label="Ratings">
+    <div class="grabber" aria-hidden="true"></div>
+    <div id="resultContent"></div>
+  </dialog>
+
+  <dialog id="searchSheet" class="sheet" aria-labelledby="searchHeading">
+    <div class="grabber" aria-hidden="true"></div>
+    <form id="searchForm" class="form" autocomplete="off">
+      <h2 id="searchHeading">Search by title</h2>
+      <label>Title
+        <input id="searchTitle" name="title" type="text" enterkeyhint="search" required autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="e.g. Inception">
+      </label>
+      <label>Year <span class="optional">(optional)</span>
+        <input id="searchYear" name="year" type="text" inputmode="numeric" pattern="\d{4}" maxlength="4" placeholder="e.g. 2010">
+      </label>
+      <div class="form-actions">
+        <button id="searchCancel" type="button" class="button">Cancel</button>
+        <button type="submit" class="button primary">Search</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="historySheet" class="sheet" aria-labelledby="historyHeading">
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sheet-header">
+      <button id="historyClear" type="button" class="link-button">Clear all</button>
+      <h2 id="historyHeading">History</h2>
+      <button id="historyDone" type="button" class="link-button strong">Done</button>
+    </div>
+    <ul id="historyList" class="history-list"></ul>
+    <p id="historyEmpty" class="empty">Titles you identify show up here.</p>
+  </dialog>
+
+  <dialog id="settingsSheet" class="sheet" aria-labelledby="settingsHeading">
+    <div class="grabber" aria-hidden="true"></div>
+    <form id="settingsForm" class="form" autocomplete="off">
+      <h2 id="settingsHeading">Settings</h2>
+      <div id="settingsIntro" class="intro">
+        <p><strong>Welcome to ReelCheck.</strong> Point your camera at the TV, zoom until the title fills the box and tap Identify. Claude reads the screen and OMDb supplies IMDb, Rotten Tomatoes and Metacritic ratings.</p>
+        <p>Both services need a key. They are stored only on this device.</p>
+      </div>
+      <p id="settingsNotice" class="notice" hidden></p>
+
+      <label>OMDb API key <span class="optional">(ratings, free)</span>
+        <input id="omdbKey" name="omdb" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="8 characters">
+      </label>
+      <p class="hint"><a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener noreferrer">Get a free OMDb key</a> — choose FREE, then click the activation link OMDb emails you. 1,000 lookups a day.</p>
+
+      <label>Anthropic API key <span class="optional">(identifies the title)</span>
+        <input id="anthropicKey" name="anthropic" type="password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="sk-ant-…">
+      </label>
+      <p class="hint"><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Create an Anthropic key</a>. ReelCheck uses Claude Haiku 5.5, the cheapest model; each identification costs a small fraction of a cent.</p>
+
+      <p class="hint privacy">When you tap Identify, the picture inside the box is sent to Anthropic. Titles are sent to OMDb. Nothing else leaves your phone.</p>
+
+      <div class="form-actions">
+        <button id="settingsCancel" type="button" class="button">Close</button>
+        <button type="submit" class="button primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
